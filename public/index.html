@@ -101,13 +101,25 @@ body{display:flex;background:#fff}
   flex:1;overflow-y:auto;padding:2px 0;
 }
 .sb-item{
-  display:flex;align-items:center;gap:6px;
+  display:flex;align-items:center;gap:4px;
   padding:6px 10px;cursor:pointer;font-size:13px;
   font-family:inherit;
-  transition:background .08s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background .08s;
+}
+.sb-item-main{
+  flex:1;display:flex;align-items:center;gap:6px;
+  min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .sb-item .icon{font-size:15px;flex-shrink:0}
 .sb-item .size{font-size:10px;margin-left:auto;flex-shrink:0;opacity:.5}
+.sb-item-actions{display:none;gap:2px;flex-shrink:0}
+.sb-item:hover .sb-item-actions{display:flex}
+.sb-act{
+  background:none;border:none;cursor:pointer;font-size:12px;
+  padding:2px 5px;border-radius:4px;line-height:1;
+}
+.sb-act:hover{background:rgba(0,0,0,.08)}
+#sidebar.dark-theme .sb-act:hover{background:rgba(255,255,255,.12)}
 
 .sb-empty{
   padding:20px 10px;text-align:center;font-size:12px;
@@ -224,6 +236,19 @@ body{display:flex;background:#fff}
 
 <input type="file" id="input-import" accept=".excalidraw,.json,application/json" style="display:none"/>
 
+<!-- Rename Modal -->
+<div class="modal-overlay" id="modal-rename">
+  <div class="modal-box">
+    <h3>✏️ 重命名</h3>
+    <p>请输入新名称：</p>
+    <input type="text" id="input-rename" placeholder="新名称" autofocus/>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-cancel-rename">取消</button>
+      <button class="btn-save" id="btn-confirm-rename">确定</button>
+    </div>
+  </div>
+</div>
+
 <!-- Save-Name Modal -->
 <div class="modal-overlay" id="modal-save-name">
   <div class="modal-box">
@@ -261,9 +286,9 @@ body{display:flex;background:#fff}
   </div>
 </div>
 
-<script src="react.js?v=20260920d"></script>
-<script src="react-dom.js?v=20260920d"></script>
-<script src="excalidraw.js?v=20260920d"></script>
+<script src="react.js?v=20260920e"></script>
+<script src="react-dom.js?v=20260920e"></script>
+<script src="excalidraw.js?v=20260920e"></script>
 <script>
 (function(){
 'use strict';
@@ -353,6 +378,41 @@ function apiMkdir(dirPath, cb) {
       cb(null);
     })
     .catch(function(e){ console.error('Mkdir fetch error:', e); cb(e); });
+}
+
+function apiRename(oldPath, newName, cb) {
+  fetch('/api/rename', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ oldPath: oldPath, newName: newName })
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { cb(data.error); return; }
+      cb(null, data.newPath);
+    })
+    .catch(function(e){ cb(e.message || e); });
+}
+
+function apiDelete(itemPath, cb) {
+  fetch('/api/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ itemPath: itemPath })
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { cb(data.error); return; }
+      cb(null);
+    })
+    .catch(function(e){ cb(e.message || e); });
+}
+
+function itemActionButtons(type, name) {
+  return '<span class="sb-item-actions">' +
+    '<button type="button" class="sb-act" data-action="rename" data-type="' + escAttr(type) + '" data-name="' + escAttr(name) + '" title="重命名">✏️</button>' +
+    '<button type="button" class="sb-act" data-action="delete" data-type="' + escAttr(type) + '" data-name="' + escAttr(name) + '" title="删除">🗑️</button>' +
+    '</span>';
 }
 
 // ==================== DIRTY STATE ====================
@@ -485,21 +545,22 @@ function renderFileList(data) {
   // Directories first
   for (var i = 0; i < dirs.length; i++) {
     html += '<div class="sb-item dir" data-type="dir" data-name="' + escAttr(dirs[i]) + '">' +
-      '<span class="icon">📁</span>' + escHtml(dirs[i]) +
+      '<span class="sb-item-main"><span class="icon">📁</span>' + escHtml(dirs[i]) + '</span>' +
+      itemActionButtons('dir', dirs[i]) +
       '</div>';
   }
   // Then files
   for (var j = 0; j < files.length; j++) {
     var f = files[j];
     var isExcalidraw = f.name.toLowerCase().endsWith('.excalidraw');
-    var cls = isExcalidraw ? 'sb-item excalidraw-file' : 'sb-item';
     var icon = isExcalidraw ? '🎨' : '📄';
     var sizeStr = f.size ? formatSize(f.size) : '';
     html += '<div class="sb-item ' + (isExcalidraw ? 'excalidraw-file' : '') + '"' +
       ' data-type="file" data-name="' + escAttr(f.name) + '"' +
       ' data-excalidraw="' + (isExcalidraw ? '1' : '0') + '">' +
-      '<span class="icon">' + icon + '</span>' + escHtml(f.name) +
-      (sizeStr ? '<span class="size">' + sizeStr + '</span>' : '') +
+      '<span class="sb-item-main"><span class="icon">' + icon + '</span>' + escHtml(f.name) +
+      (sizeStr ? '<span class="size">' + sizeStr + '</span>' : '') + '</span>' +
+      itemActionButtons('file', f.name) +
       '</div>';
   }
   fileList.innerHTML = html;
@@ -785,6 +846,66 @@ function showSaveNameModal(cb) {
   showSaveNameModalWithDefault('', cb);
 }
 
+function showRenameModal(currentName, cb) {
+  var modal = document.getElementById('modal-rename');
+  var input = document.getElementById('input-rename');
+  input.value = currentName || '';
+  modal.classList.add('show');
+  input.focus();
+  input.select();
+
+  function cleanup(action) {
+    modal.classList.remove('show');
+    document.getElementById('btn-confirm-rename').onclick = null;
+    document.getElementById('btn-cancel-rename').onclick = null;
+    input.onkeydown = null;
+    if (action === 'confirm') {
+      var name = input.value.trim();
+      if (!name) { cb(null); return; }
+      cb(name);
+    } else {
+      cb(null);
+    }
+  }
+
+  document.getElementById('btn-confirm-rename').onclick = function(){ cleanup('confirm'); };
+  document.getElementById('btn-cancel-rename').onclick = function(){ cleanup('cancel'); };
+  input.onkeydown = function(e){
+    if (e.key === 'Enter') cleanup('confirm');
+    if (e.key === 'Escape') cleanup('cancel');
+  };
+}
+
+function renameItem(type, name) {
+  var itemPath = joinPath(currentDir, name);
+  showRenameModal(name, function(newName) {
+    if (!newName || newName === name) return;
+    apiRename(itemPath, newName, function(err, newPath) {
+      if (err) { alert('重命名失败：' + err); return; }
+      if (currentFile && currentFile.path === itemPath) {
+        currentFile = { name: newName, path: newPath };
+      }
+      navigateTo(currentDir);
+    });
+  });
+}
+
+function deleteItem(type, name) {
+  var itemPath = joinPath(currentDir, name);
+  var label = type === 'dir' ? '文件夹' : '文件';
+  if (!confirm('确定删除' + label + '「' + name + '」？此操作不可恢复。')) return;
+
+  apiDelete(itemPath, function(err) {
+    if (err) { alert('删除失败：' + err); return; }
+    if (currentFile && currentFile.path === itemPath) {
+      currentFile = null;
+      renderExcalidraw([], {});
+      markClean();
+    }
+    navigateTo(currentDir);
+  });
+}
+
 var unsavedCallback = null;
 function showUnsavedModal(msg, cb) {
   unsavedCallback = cb;
@@ -841,6 +962,17 @@ function toggleSidebarTheme() {
 
 // ==================== EVENT: File List Clicks ====================
 fileList.addEventListener('click', function(e){
+  var actBtn = e.target.closest('.sb-act');
+  if (actBtn) {
+    e.stopPropagation();
+    var action = actBtn.getAttribute('data-action');
+    var actType = actBtn.getAttribute('data-type');
+    var actName = actBtn.getAttribute('data-name');
+    if (action === 'rename') renameItem(actType, actName);
+    else if (action === 'delete') deleteItem(actType, actName);
+    return;
+  }
+
   var item = e.target.closest('.sb-item');
   if (!item) return;
   var type = item.getAttribute('data-type');

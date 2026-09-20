@@ -96,6 +96,81 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: rename file or directory
+  if (reqPath === '/api/rename' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const { oldPath, newName } = JSON.parse(body);
+        let subPath = (oldPath || '').replace(/\.\./g, '');
+        const oldTarget = resolveSafe(DATA_ROOT, path.join(DATA_ROOT, subPath));
+        if (!oldTarget || oldTarget === DATA_ROOT) {
+          res.writeHead(403); res.end('Forbidden'); return;
+        }
+        const safeName = path.basename((newName || '').replace(/\.\./g, '').replace(/[\\/]/g, ''));
+        if (!safeName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid name' }));
+          return;
+        }
+        const newTarget = resolveSafe(DATA_ROOT, path.join(path.dirname(oldTarget), safeName));
+        if (!newTarget) { res.writeHead(403); res.end('Forbidden'); return; }
+        if (!fs.existsSync(oldTarget)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not found' }));
+          return;
+        }
+        if (fs.existsSync(newTarget)) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Target already exists' }));
+          return;
+        }
+        fs.renameSync(oldTarget, newTarget);
+        const relNew = path.relative(DATA_ROOT, newTarget).split(path.sep).join('/');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, newPath: '/' + relNew }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // API: delete file or directory
+  if (reqPath === '/api/delete' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const { itemPath } = JSON.parse(body);
+        let subPath = (itemPath || '').replace(/\.\./g, '');
+        const target = resolveSafe(DATA_ROOT, path.join(DATA_ROOT, subPath));
+        if (!target || target === DATA_ROOT) {
+          res.writeHead(403); res.end('Forbidden'); return;
+        }
+        if (!fs.existsSync(target)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not found' }));
+          return;
+        }
+        const stat = fs.statSync(target);
+        if (stat.isDirectory()) {
+          fs.rmSync(target, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(target);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // API: create directory
   if (reqPath === '/api/mkdir' && req.method === 'POST') {
     let body = '';
