@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+*.tar
+
+# Local workspace data (user drawings)
+data/

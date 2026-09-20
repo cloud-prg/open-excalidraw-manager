@@ -1,0 +1,10 @@
+services:
+  excalidraw:
+    build: .
+    image: open-excalidraw-manager:local
+    container_name: open-excalidraw-manager
+    restart: unless-stopped
+    ports:
+      - "48501:80"
+    volumes:
+      - ./data:/data

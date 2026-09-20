@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Excalidraw — NAS 文件浏览器</title>
+<style>
+/* ===== Reset & Layout ===== */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',Virgil,'Ma Shan Zheng',STKaiti,KaiTi,cursive,sans-serif}
+body{display:flex;background:#fff}
+
+/* ===== Toggle Button ===== */
+#toggle-btn{
+  position:fixed;left:0;top:33%;z-index:1001;
+  width:28px;height:48px;
+  background:#f0f0f5;border:1px solid #d4d4d8;border-left:none;
+  border-radius:0 8px 8px 0;
+  cursor:pointer;user-select:none;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;transition:background .15s;
+}
+#toggle-btn:hover{background:#e8e8f0}
+#toggle-btn:active{background:#dcdce8}
+
+/* ===== Sidebar ===== */
+#sidebar{
+  display:none;flex-direction:column;
+  width:268px;min-width:268px;height:100%;
+  border-right:1px solid #d4d4d8;
+  z-index:1000;overflow:hidden;
+  transition:margin-left .15s ease;
+}
+#sidebar.open{display:flex}
+#sidebar.hidden{display:none}
+
+/* Light theme (default) */
+#sidebar.light-theme{background:#f8f9fa;color:#1e1e1e}
+#sidebar.light-theme .sb-header{background:#fff;border-bottom:1px solid #e5e5ea}
+#sidebar.light-theme .sb-toolbar button{background:#f0f0f5;color:#1e1e1e;border:1px solid #d4d4d8}
+#sidebar.light-theme .sb-toolbar button:hover{background:#e5e5ea}
+#sidebar.light-theme .sb-breadcrumb{color:#6b7280}
+#sidebar.light-theme .sb-breadcrumb span{color:#6965db;cursor:pointer}
+#sidebar.light-theme .sb-breadcrumb span:hover{text-decoration:underline}
+#sidebar.light-theme .sb-item{color:#1e1e1e}
+#sidebar.light-theme .sb-item:hover{background:#e5e5ea}
+#sidebar.light-theme .sb-item.dir{color:#6965db}
+#sidebar.light-theme .sb-item.excalidraw-file{color:#1e1e1e}
+#sidebar.light-theme .sb-empty{color:#8e8e93}
+#sidebar.light-theme .sb-theme-btn{color:#1e1e1e}
+
+/* Dark theme */
+#sidebar.dark-theme{background:#1c1c1e;color:#f5f5f7}
+#sidebar.dark-theme .sb-header{background:#2c2c2e;border-bottom:1px solid #48484a}
+#sidebar.dark-theme .sb-toolbar button{background:#3a3a3c;color:#f5f5f7;border:1px solid #48484a}
+#sidebar.dark-theme .sb-toolbar button:hover{background:#48484a}
+#sidebar.dark-theme .sb-breadcrumb{color:#98989d}
+#sidebar.dark-theme .sb-breadcrumb span{color:#a78bfa;cursor:pointer}
+#sidebar.dark-theme .sb-breadcrumb span:hover{text-decoration:underline}
+#sidebar.dark-theme .sb-item{color:#f5f5f7}
+#sidebar.dark-theme .sb-item:hover{background:#3a3a3c}
+#sidebar.dark-theme .sb-item.dir{color:#a78bfa}
+#sidebar.dark-theme .sb-item.excalidraw-file{color:#f5f5f7}
+#sidebar.dark-theme .sb-empty{color:#636366}
+#sidebar.dark-theme .sb-theme-btn{color:#f5f5f7}
+
+/* ===== Sidebar Structure ===== */
+.sb-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 10px;font-size:14px;font-weight:600;
+  font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',Virgil,'Ma Shan Zheng',STKaiti,KaiTi,cursive,sans-serif;
+  min-height:36px;
+}
+.sb-header-title{display:flex;align-items:center;gap:6px}
+.sb-header-actions{display:flex;gap:4px}
+.sb-theme-btn{
+  background:none;border:none;cursor:pointer;
+  font-size:14px;padding:2px 4px;border-radius:4px;
+}
+.sb-theme-btn:hover{opacity:.7}
+
+.sb-toolbar{
+  display:flex;gap:4px;padding:6px 10px;
+}
+.sb-toolbar button{
+  flex:1;padding:5px 8px;border-radius:6px;
+  cursor:pointer;font-size:12px;font-weight:600;
+  font-family:inherit;transition:background .1s;
+  display:flex;align-items:center;justify-content:center;gap:3px;
+}
+
+.sb-breadcrumb{
+  padding:4px 10px;font-size:11px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-family:inherit;
+}
+.sb-breadcrumb span{cursor:pointer}
+.sb-breadcrumb span:hover{text-decoration:underline}
+
+.sb-list{
+  flex:1;overflow-y:auto;padding:2px 0;
+}
+.sb-item{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 10px;cursor:pointer;font-size:13px;
+  font-family:inherit;
+  transition:background .08s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sb-item .icon{font-size:15px;flex-shrink:0}
+.sb-item .size{font-size:10px;margin-left:auto;flex-shrink:0;opacity:.5}
+
+.sb-empty{
+  padding:20px 10px;text-align:center;font-size:12px;
+  font-family:inherit;
+}
+
+/* Dirty indicator */
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+.save-dot{
+  display:none;width:6px;height:6px;border-radius:50%;
+  background:#f59e0b;animation:pulse-dot 1.2s ease-in-out infinite;
+  position:absolute;top:3px;right:3px;
+}
+
+/* ===== Canvas Area ===== */
+#canvas-wrap{flex:1;height:100%;min-width:0;position:relative;display:flex;flex-direction:column}
+#root{flex:1;width:100%;height:100%;min-height:0;overflow:hidden}
+#root .excalidraw,#root .excalidraw-wrapper{width:100%;height:100%}
+
+/* ===== Floating Import/Export Bar (bottom-right, avoid covering Excalidraw top menu) ===== */
+#floating-actions{
+  position:fixed;bottom:16px;right:16px;z-index:4;
+  display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;
+  max-width:calc(100vw - 48px);
+}
+#floating-actions button{
+  padding:8px 14px;border-radius:8px;border:1px solid #d4d4d8;
+  background:#fff;color:#1e1e1e;font-size:13px;font-weight:600;
+  cursor:pointer;font-family:inherit;
+  box-shadow:0 2px 10px rgba(0,0,0,.12);
+  display:flex;align-items:center;gap:4px;
+}
+#floating-actions button:hover{background:#f4f4f8;border-color:#6965db}
+#floating-actions button.primary{background:#6965db;color:#fff;border-color:#6965db}
+#floating-actions button.primary:hover{background:#5b57c4}
+
+/* ===== Modal Overlay ===== */
+.modal-overlay{
+  display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,.35);z-index:9999;
+  align-items:center;justify-content:center;
+}
+.modal-overlay.show{display:flex}
+.modal-box{
+  background:#fff;border-radius:12px;padding:20px 24px;
+  max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.18);
+  font-family:inherit;
+}
+.modal-box h3{font-size:15px;margin-bottom:10px;font-family:inherit}
+.modal-box p{font-size:13px;color:#555;margin-bottom:16px;line-height:1.5}
+.modal-box input{
+  width:100%;padding:8px 10px;border:1px solid #d4d4d8;border-radius:6px;
+  font-size:13px;margin-bottom:14px;font-family:inherit;outline:none;
+}
+.modal-box input:focus{border-color:#6965db;box-shadow:0 0 0 2px rgba(105,101,219,.15)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+.modal-actions button{
+  padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;
+  cursor:pointer;border:none;font-family:inherit;
+}
+.btn-save{background:#6965db;color:#fff}
+.btn-save:hover{background:#5b57c4}
+.btn-discard{background:#f0f0f5;color:#1e1e1e;border:1px solid #d4d4d8!important}
+.btn-discard:hover{background:#e5e5ea}
+.btn-cancel{background:#f0f0f5;color:#1e1e1e;border:1px solid #d4d4d8!important}
+.btn-cancel:hover{background:#e5e5ea}
+
+/* Non-excalidraw preview */
+.preview-content{
+  max-height:200px;overflow-y:auto;background:#f5f5f7;border-radius:6px;
+  padding:10px;font-size:11px;font-family:monospace;white-space:pre-wrap;
+  word-break:break-all;margin-bottom:14px;color:#333;
+}
+</style>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"/>
+</head>
+<body>
+
+<!-- Toggle Button -->
+<div id="toggle-btn" title="文件浏览器">📂</div>
+
+<!-- Sidebar -->
+<div id="sidebar" class="light-theme">
+  <div class="sb-header">
+    <span class="sb-header-title" id="sb-title">📂 文件浏览器</span>
+    <div class="sb-header-actions">
+      <button class="sb-theme-btn" id="theme-toggle" title="切换主题">🌓</button>
+      <button class="sb-theme-btn" id="sb-close" title="收起">✕</button>
+    </div>
+  </div>
+  <div class="sb-toolbar">
+    <button id="btn-save" title="保存 (Ctrl+S)" style="position:relative">
+      💾 保存<span class="save-dot" id="save-dot"></span>
+    </button>
+    <button id="btn-new" title="新建画布">✨ 新建</button>
+    <button id="btn-import" title="从本机导入 .excalidraw 文件">📥 导入</button>
+    <button id="btn-up" title="上级目录">⬆ 上级</button>
+  </div>
+  <div class="sb-breadcrumb" id="breadcrumb"></div>
+  <div class="sb-list" id="file-list">
+    <div class="sb-empty">加载中…</div>
+  </div>
+</div>
+
+<!-- Canvas -->
+<div id="canvas-wrap">
+  <div id="floating-actions">
+    <button id="fab-import" type="button" title="从本机导入 .excalidraw">📥 导入</button>
+    <button id="fab-export" type="button" title="导出 .excalidraw 到本机">📤 导出</button>
+    <button id="fab-save" type="button" class="primary" title="保存到服务器 (Ctrl+S)">💾 保存</button>
+  </div>
+  <div id="root"></div>
+</div>
+
+<input type="file" id="input-import" accept=".excalidraw,.json,application/json" style="display:none"/>
+
+<!-- Save-Name Modal -->
+<div class="modal-overlay" id="modal-save-name">
+  <div class="modal-box">
+    <h3>💾 保存画布</h3>
+    <p>请输入文件名（自动添加 .excalidraw 后缀）：</p>
+    <input type="text" id="input-filename" placeholder="例如：产品草图" autofocus/>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-cancel-save">取消</button>
+      <button class="btn-save" id="btn-confirm-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unsaved Changes Modal -->
+<div class="modal-overlay" id="modal-unsaved">
+  <div class="modal-box">
+    <h3>⚠️ 有未保存的更改</h3>
+    <p id="unsaved-msg">当前画布有未保存的修改，是否保存后再继续？</p>
+    <div class="modal-actions">
+      <button class="btn-discard" id="btn-discard">🗑 放弃</button>
+      <button class="btn-cancel" id="btn-cancel-unsaved">取消</button>
+      <button class="btn-save" id="btn-save-unsaved">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal-overlay" id="modal-preview">
+  <div class="modal-box">
+    <h3 id="preview-title">📄 文件预览</h3>
+    <div class="preview-content" id="preview-content"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-close-preview">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="react.js?v=20260920d"></script>
+<script src="react-dom.js?v=20260920d"></script>
+<script src="excalidraw.js?v=20260920d"></script>
+<script>
+(function(){
+'use strict';
+
+// ==================== CONSTANTS ====================
+var DEFAULT_DIR = '/';
+var ExcalidrawComp = (window.ExcalidrawLib && window.ExcalidrawLib.Excalidraw)
+  || (window.Excalidraw && window.Excalidraw.default)
+  || window.Excalidraw;
+
+if (!ExcalidrawComp) {
+  document.body.innerHTML = '<div style="padding:24px;font-family:sans-serif">'
+    + '<h2>Excalidraw 加载失败</h2>'
+    + '<p>请强制刷新页面（Ctrl+Shift+R）后重试。</p></div>';
+  throw new Error('Excalidraw component not loaded');
+}
+
+// ==================== STATE ====================
+var currentDir = '';
+var currentFile = null;       // { name, path }
+var currentElements = [];
+var currentAppState = {};
+var fullAppState = {}; // full appState from onChange, for saving
+var isDirty = false;
+var renderKey = 0;
+var reactRoot = null;
+var onChangeSuppressUntil = 0; // suppress onChange until this timestamp
+var initialElementsJSON = ''; // set on first onChange after render; empty = pending
+
+// Pending action after unsaved-changes resolution
+var pendingAction = null;     // { type: 'open'|'new', data: ... }
+
+// ==================== DOM REFS ====================
+var sidebar = document.getElementById('sidebar');
+var toggleBtn = document.getElementById('toggle-btn');
+var fileList = document.getElementById('file-list');
+var breadcrumb = document.getElementById('breadcrumb');
+var sbTitle = document.getElementById('sb-title');
+var saveDot = document.getElementById('save-dot');
+
+// ==================== DRAG STATE ====================
+var dragStartY = 0;
+var dragStartTop = 0;
+var isDragging = false;
+
+// ==================== API HELPERS ====================
+function apiBrowse(dirPath, cb) {
+  fetch('/api/browse?path=' + encodeURIComponent(dirPath))
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { console.error('Browse error:', data.error); cb(null); return; }
+      cb(data);
+    })
+    .catch(function(e){ console.error('Browse fetch error:', e); cb(null); });
+}
+
+function apiFile(filePath, cb) {
+  fetch('/api/file?path=' + encodeURIComponent(filePath))
+    .then(function(r){ return r.text(); })
+    .then(function(text){ cb(null, text); })
+    .catch(function(e){ console.error('File fetch error:', e); cb(e); });
+}
+
+function apiSave(filePath, content, cb) {
+  fetch('/api/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ filePath: filePath, content: content })
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { console.error('Save error:', data.error); cb(data.error); return; }
+      cb(null);
+    })
+    .catch(function(e){ console.error('Save fetch error:', e); cb(e); });
+}
+
+function apiMkdir(dirPath, cb) {
+  fetch('/api/mkdir', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ dirPath: dirPath })
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.error) { console.error('Mkdir error:', data.error); cb(data.error); return; }
+      cb(null);
+    })
+    .catch(function(e){ console.error('Mkdir fetch error:', e); cb(e); });
+}
+
+// ==================== DIRTY STATE ====================
+function markDirty() {
+  if (isDirty) return;
+  isDirty = true;
+  saveDot.style.display = 'block';
+  sbTitle.textContent = '• 📂 文件浏览器';
+  document.title = '• Excalidraw — NAS 文件浏览器';
+}
+
+function markClean() {
+  isDirty = false;
+  saveDot.style.display = 'none';
+  sbTitle.textContent = '📂 文件浏览器';
+  document.title = 'Excalidraw — NAS 文件浏览器';
+}
+
+// ==================== SANITIZE APPSTATE ====================
+function sanitizeAppState(as) {
+  // Only keep essential keys; strip internal state that breaks UMD 0.17.6
+  if (!as || typeof as !== 'object') return {};
+  var clean = {};
+  var safeKeys = [
+    'viewBackgroundColor', 'theme', 'zoom', 'scrollX', 'scrollY',
+    'activeTool', 'gridSize', 'exportBackground', 'exportScale',
+    'currentItemFontFamily', 'currentItemFontSize', 'currentItemStrokeColor',
+    'currentItemBackgroundColor', 'currentItemFillStyle', 'currentItemStrokeWidth',
+    'currentItemStrokeStyle', 'currentItemRoughness', 'currentItemOpacity',
+    'currentItemRoundness', 'currentItemTextAlign', 'currentItemStartArrowhead',
+    'currentItemEndArrowhead', 'name', 'zenModeEnabled', 'viewModeEnabled'
+  ];
+  for (var i = 0; i < safeKeys.length; i++) {
+    if (as.hasOwnProperty(safeKeys[i]) && as[safeKeys[i]] !== null && as[safeKeys[i]] !== undefined) {
+      clean[safeKeys[i]] = as[safeKeys[i]];
+    }
+  }
+  return clean;
+}
+
+// ==================== RENDER EXCALIDRAW (V9 key-pattern) ====================
+function renderExcalidraw(elements, appState) {
+  renderKey++;
+  currentElements = elements || [];
+  // Sanitize appState to avoid UMD compatibility issues
+  currentAppState = sanitizeAppState(appState || {});
+  initialElementsJSON = ''; // will be set by first onChange
+
+  var renderProps = {
+    key: renderKey,
+    langCode: 'zh-CN',
+    theme: 'light',
+    initialData: {
+      elements: currentElements,
+      appState: currentAppState
+    },
+    onChange: function(el, st) {
+      currentElements = el || [];
+      fullAppState = st || {};        // full state for saving
+      currentAppState = sanitizeAppState(fullAppState); // sanitized for next render
+      // Only mark dirty when content actually differs from initial state
+      if (!isDirty) {
+        var nowJSON = JSON.stringify(currentElements);
+        if (initialElementsJSON === '') {
+          // First onChange after render — use this as baseline
+          initialElementsJSON = nowJSON;
+        } else if (nowJSON !== initialElementsJSON) {
+          markDirty();
+        }
+      }
+    },
+    UIOptions: {
+      canvasActions: {
+        export: false,
+        saveAsImage: false,
+        loadScene: false,
+        saveScene: false
+      }
+    }
+  };
+
+  if (!reactRoot) {
+    var rootEl = document.getElementById('root');
+    rootEl.innerHTML = '';
+    reactRoot = ReactDOM.createRoot(rootEl);
+  }
+
+  reactRoot.render(
+    React.createElement(React.StrictMode, null,
+      React.createElement(ExcalidrawComp, renderProps)
+    )
+  );
+}
+
+// ==================== BREADCRUMB ====================
+function renderBreadcrumb(dirPath) {
+  if (!dirPath || dirPath === '/') {
+    breadcrumb.innerHTML = '<span data-path="/">🏠 /</span>';
+    return;
+  }
+  var parts = dirPath.split('/').filter(Boolean);
+  var html = '<span data-path="/">🏠 /</span> ';
+  var accum = '';
+  for (var i = 0; i < parts.length; i++) {
+    accum += '/' + parts[i];
+    if (i === parts.length - 1) {
+      html += parts[i];
+    } else {
+      html += '<span data-path="' + accum + '">' + parts[i] + '</span> / ';
+    }
+  }
+  breadcrumb.innerHTML = html;
+}
+
+// ==================== FILE LIST ====================
+function renderFileList(data) {
+  if (!data || data.error) {
+    fileList.innerHTML = '<div class="sb-empty">目录加载失败</div>';
+    return;
+  }
+  var dirs = data.dirs || [];
+  var files = data.files || [];
+
+  if (dirs.length === 0 && files.length === 0) {
+    fileList.innerHTML = '<div class="sb-empty">（空目录）</div>';
+    return;
+  }
+
+  var html = '';
+  // Directories first
+  for (var i = 0; i < dirs.length; i++) {
+    html += '<div class="sb-item dir" data-type="dir" data-name="' + escAttr(dirs[i]) + '">' +
+      '<span class="icon">📁</span>' + escHtml(dirs[i]) +
+      '</div>';
+  }
+  // Then files
+  for (var j = 0; j < files.length; j++) {
+    var f = files[j];
+    var isExcalidraw = f.name.toLowerCase().endsWith('.excalidraw');
+    var cls = isExcalidraw ? 'sb-item excalidraw-file' : 'sb-item';
+    var icon = isExcalidraw ? '🎨' : '📄';
+    var sizeStr = f.size ? formatSize(f.size) : '';
+    html += '<div class="sb-item ' + (isExcalidraw ? 'excalidraw-file' : '') + '"' +
+      ' data-type="file" data-name="' + escAttr(f.name) + '"' +
+      ' data-excalidraw="' + (isExcalidraw ? '1' : '0') + '">' +
+      '<span class="icon">' + icon + '</span>' + escHtml(f.name) +
+      (sizeStr ? '<span class="size">' + sizeStr + '</span>' : '') +
+      '</div>';
+  }
+  fileList.innerHTML = html;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// ==================== NAVIGATION ====================
+function navigateTo(dirPath, cb) {
+  currentDir = dirPath;
+  renderBreadcrumb(dirPath);
+  apiBrowse(dirPath, function(data){
+    if (!data || data.error) {
+      // Directory might not exist — try to create it (P1)
+      if (dirPath === DEFAULT_DIR) {
+        apiMkdir(dirPath, function(){
+          // Retry browse after creation
+          apiBrowse(dirPath, function(d2){
+            renderFileList(d2 || { dirs: [], files: [] });
+            if (cb) cb();
+          });
+        });
+      } else {
+        renderFileList({ dirs: [], files: [] });
+        if (cb) cb();
+      }
+      return;
+    }
+    renderFileList(data);
+    if (cb) cb();
+  });
+}
+
+// ==================== FILE OPERATIONS ====================
+function openFile(fileName) {
+  var filePath = joinPath(currentDir, fileName);
+
+  function doOpen() {
+    apiFile(filePath, function(err, content){
+      if (err) { alert('无法读取文件：' + err.message); return; }
+      try {
+        var data = JSON.parse(content);
+        currentFile = { name: fileName, path: filePath };
+        markClean();
+        renderExcalidraw(data.elements || [], data.appState || {});
+        flashSaveBtn('已打开: ' + fileName);
+      } catch(e) {
+        // Not valid JSON — show preview for non-excalidraw files
+        showPreviewModal(fileName, content);
+      }
+    });
+  }
+
+  // Check dirty state
+  if (isDirty) {
+    pendingAction = { type: 'open', data: { name: fileName, path: filePath } };
+    showUnsavedModal('即将打开 "' + fileName + '"，当前修改未保存。', function(action){
+      if (action === 'save') {
+        saveCurrent(function(){ pendingAction = null; doOpen(); });
+      } else if (action === 'discard') {
+        pendingAction = null;
+        doOpen();
+      }
+      // 'cancel' → do nothing
+    });
+    return;
+  }
+
+  doOpen();
+}
+
+function loadImportedData(fileName, content, data) {
+  var filePath = joinPath(currentDir, fileName);
+  apiSave(filePath, content, function(err) {
+    if (err) { alert('导入保存失败：' + err); return; }
+    currentFile = { name: fileName, path: filePath };
+    markClean();
+    renderExcalidraw(data.elements || [], data.appState || {});
+    flashSaveBtn('已导入: ' + fileName);
+    navigateTo(currentDir);
+  });
+}
+
+function importLocalFile() {
+  document.getElementById('input-import').click();
+}
+
+function handleImportFile(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var content = e.target.result;
+    try {
+      var data = JSON.parse(content);
+      if (!data || (!Array.isArray(data.elements) && data.type !== 'excalidraw')) {
+        alert('不是有效的 Excalidraw 文件');
+        return;
+      }
+
+      var defaultName = file.name.trim() || 'imported.excalidraw';
+      if (!defaultName.toLowerCase().endsWith('.excalidraw')) defaultName += '.excalidraw';
+
+      function doImport() {
+        showSaveNameModalWithDefault(defaultName, function(fileName) {
+          if (!fileName) return;
+          loadImportedData(fileName, content, data);
+        });
+      }
+
+      if (isDirty) {
+        showUnsavedModal('即将导入新文件，当前修改未保存。', function(action) {
+          if (action === 'save') {
+            saveCurrent(function() { doImport(); });
+          } else if (action === 'discard') {
+            doImport();
+          }
+        });
+        return;
+      }
+
+      doImport();
+    } catch (err) {
+      alert('文件解析失败：' + err.message);
+    }
+  };
+  reader.onerror = function() { alert('读取文件失败'); };
+  reader.readAsText(file);
+}
+
+function newFile() {
+  function doNew() {
+    currentElements = [];
+    currentAppState = {};
+    fullAppState = {};
+    renderExcalidraw([], {});
+    currentFile = null;
+    markClean();
+    flashSaveBtn('新建画布');
+  }
+
+  if (isDirty) {
+    pendingAction = { type: 'new' };
+    showUnsavedModal('即将新建画布，当前修改未保存。', function(action){
+      if (action === 'save') {
+        saveCurrent(function(){ pendingAction = null; doNew(); });
+      } else if (action === 'discard') {
+        pendingAction = null;
+        doNew();
+      }
+    });
+    return;
+  }
+
+  doNew();
+}
+
+function saveCurrent(cb) {
+  if (!currentFile) {
+    // First-time save — show filename modal
+    showSaveNameModal(function(fileName){
+      if (!fileName) { if (cb) cb(new Error('cancelled')); return; }
+      currentFile = { name: fileName, path: joinPath(currentDir, fileName) };
+      doSave(cb);
+    });
+    return;
+  }
+
+  doSave(cb);
+}
+
+function buildSceneContent() {
+  return JSON.stringify({
+    type: 'excalidraw',
+    version: 2,
+    elements: currentElements,
+    appState: fullAppState
+  }, null, 2);
+}
+
+function exportCurrentFile() {
+  if (!currentElements || currentElements.length === 0) {
+    alert('画布为空，没有可导出的内容');
+    return;
+  }
+  var content = buildSceneContent();
+  var fileName = (currentFile && currentFile.name) || 'drawing.excalidraw';
+  if (!fileName.toLowerCase().endsWith('.excalidraw')) fileName += '.excalidraw';
+  var blob = new Blob([content], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  flashActionBtn('已导出');
+}
+
+function doSave(cb) {
+  var content = buildSceneContent();
+
+  apiSave(currentFile.path, content, function(err){
+    if (err) { alert('保存失败：' + err); if (cb) cb(err); return; }
+    markClean();
+    flashSaveBtn('已保存: ' + currentFile.name);
+    // Refresh file list
+    if (currentDir) navigateTo(currentDir);
+    if (cb) cb(null);
+  });
+}
+
+// ==================== UI HELPERS ====================
+function joinPath(base, name) {
+  if (!base || base === '/') return '/' + name;
+  return base.replace(/\/$/, '') + '/' + name;
+}
+
+function flashActionBtn(msg) {
+  ['btn-save', 'fab-save'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.textContent = '💾 ' + msg;
+    btn.style.background = '#d1fae5';
+    btn.style.borderColor = '#6ee7b7';
+    btn.style.color = '#1e1e1e';
+    setTimeout(function(){
+      btn.textContent = '💾 保存';
+      btn.style.background = '';
+      btn.style.borderColor = '';
+      if (id === 'fab-save') btn.style.color = '';
+    }, 1500);
+  });
+}
+
+function flashSaveBtn(msg) {
+  flashActionBtn(msg);
+}
+
+// ==================== MODALS ====================
+function showSaveNameModalWithDefault(defaultName, cb) {
+  var modal = document.getElementById('modal-save-name');
+  var input = document.getElementById('input-filename');
+  input.value = defaultName || '';
+  modal.classList.add('show');
+  input.focus();
+  input.select();
+
+  function cleanup(action) {
+    modal.classList.remove('show');
+    document.getElementById('btn-confirm-save').onclick = null;
+    document.getElementById('btn-cancel-save').onclick = null;
+    input.onkeydown = null;
+    if (action === 'confirm') {
+      var name = input.value.trim();
+      if (!name) { cb(null); return; }
+      if (!name.toLowerCase().endsWith('.excalidraw')) name += '.excalidraw';
+      cb(name);
+    } else {
+      cb(null);
+    }
+  }
+
+  document.getElementById('btn-confirm-save').onclick = function(){ cleanup('confirm'); };
+  document.getElementById('btn-cancel-save').onclick = function(){ cleanup('cancel'); };
+  input.onkeydown = function(e){
+    if (e.key === 'Enter') cleanup('confirm');
+    if (e.key === 'Escape') cleanup('cancel');
+  };
+}
+
+function showSaveNameModal(cb) {
+  showSaveNameModalWithDefault('', cb);
+}
+
+var unsavedCallback = null;
+function showUnsavedModal(msg, cb) {
+  unsavedCallback = cb;
+  var modal = document.getElementById('modal-unsaved');
+  document.getElementById('unsaved-msg').textContent = msg || '当前画布有未保存的修改，是否保存后再继续？';
+  modal.classList.add('show');
+}
+
+function hideUnsavedModal() {
+  document.getElementById('modal-unsaved').classList.remove('show');
+}
+
+function resolveUnsaved(action) {
+  hideUnsavedModal();
+  var cb = unsavedCallback;
+  unsavedCallback = null;
+  if (cb) cb(action);
+}
+
+function showPreviewModal(fileName, content) {
+  var modal = document.getElementById('modal-preview');
+  document.getElementById('preview-title').textContent = '📄 ' + fileName;
+  document.getElementById('preview-content').textContent = content.substring(0, 500)
+    + (content.length > 500 ? '\n\n…（仅显示前500字符）' : '');
+  modal.classList.add('show');
+}
+
+// ==================== SIDEBAR TOGGLE ====================
+function toggleSidebar(force) {
+  if (typeof force === 'boolean') {
+    if (force) { sidebar.classList.add('open'); sidebar.classList.remove('hidden'); }
+    else { sidebar.classList.remove('open'); sidebar.classList.add('hidden'); }
+  } else {
+    if (sidebar.classList.contains('open')) {
+      sidebar.classList.remove('open');
+      sidebar.classList.add('hidden');
+    } else {
+      sidebar.classList.add('open');
+      sidebar.classList.remove('hidden');
+    }
+  }
+}
+
+// ==================== THEME ====================
+function toggleSidebarTheme() {
+  if (sidebar.classList.contains('light-theme')) {
+    sidebar.classList.remove('light-theme');
+    sidebar.classList.add('dark-theme');
+  } else {
+    sidebar.classList.remove('dark-theme');
+    sidebar.classList.add('light-theme');
+  }
+}
+
+// ==================== EVENT: File List Clicks ====================
+fileList.addEventListener('click', function(e){
+  var item = e.target.closest('.sb-item');
+  if (!item) return;
+  var type = item.getAttribute('data-type');
+  var name = item.getAttribute('data-name');
+
+  if (type === 'dir') {
+    navigateTo(joinPath(currentDir, name));
+  } else if (type === 'file') {
+    var isExc = item.getAttribute('data-excalidraw') === '1';
+    if (isExc) {
+      openFile(name);
+    } else {
+      // Preview non-excalidraw files
+      var filePath = joinPath(currentDir, name);
+      apiFile(filePath, function(err, content){
+        if (err) { alert('无法读取文件'); return; }
+        showPreviewModal(name, content);
+      });
+    }
+  }
+});
+
+fileList.addEventListener('dblclick', function(e){
+  // Double-click is already handled by single click above;
+  // prevent extra handling
+});
+
+// ==================== EVENT: Breadcrumb Clicks ====================
+breadcrumb.addEventListener('click', function(e){
+  var span = e.target.closest('span[data-path]');
+  if (!span) return;
+  var dirPath = span.getAttribute('data-path');
+  navigateTo(dirPath);
+});
+
+// ==================== EVENT: Toolbar Buttons ====================
+function bindClick(id, handler) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('click', handler);
+}
+
+bindClick('btn-save', function(){ saveCurrent(); });
+bindClick('fab-save', function(){ saveCurrent(); });
+bindClick('btn-new', function(){ newFile(); });
+bindClick('btn-import', function(){ importLocalFile(); });
+bindClick('fab-import', function(){ importLocalFile(); });
+bindClick('fab-export', function(){ exportCurrentFile(); });
+
+document.getElementById('input-import').addEventListener('change', function(e){
+  var file = e.target.files && e.target.files[0];
+  handleImportFile(file);
+  e.target.value = '';
+});
+
+document.getElementById('btn-up').addEventListener('click', function(){
+  if (!currentDir || currentDir === '/') return;
+  var parts = currentDir.split('/').filter(Boolean);
+  parts.pop();
+  var parentDir = parts.length === 0 ? '/' : '/' + parts.join('/');
+  navigateTo(parentDir);
+});
+
+document.getElementById('sb-close').addEventListener('click', function(){
+  toggleSidebar(false);
+});
+
+document.getElementById('theme-toggle').addEventListener('click', function(){
+  toggleSidebarTheme();
+});
+
+// ==================== EVENT: Toggle Button Drag ====================
+toggleBtn.addEventListener('mousedown', function(e){
+  e.preventDefault();
+  dragStartY = e.clientY;
+  dragStartTop = toggleBtn.getBoundingClientRect().top;
+  isDragging = false;
+});
+
+document.addEventListener('mousemove', function(e){
+  if (dragStartY === 0 && dragStartTop === 0) return; // not dragging
+  var dy = Math.abs(e.clientY - dragStartY);
+  if (dy > 4 && !isDragging) {
+    isDragging = true;
+  }
+  if (isDragging) {
+    var newTop = dragStartTop + (e.clientY - dragStartY);
+    newTop = Math.max(40, Math.min(newTop, window.innerHeight - 60));
+    toggleBtn.style.top = newTop + 'px';
+  }
+});
+
+document.addEventListener('mouseup', function(e){
+  if (!isDragging && dragStartY !== 0) {
+    // Was a click, not a drag
+    toggleSidebar();
+  }
+  dragStartY = 0;
+  dragStartTop = 0;
+  isDragging = false;
+});
+
+// Touch support
+toggleBtn.addEventListener('touchstart', function(e){
+  dragStartY = e.touches[0].clientY;
+  dragStartTop = toggleBtn.getBoundingClientRect().top;
+  isDragging = false;
+});
+
+document.addEventListener('touchmove', function(e){
+  if (dragStartY === 0 && dragStartTop === 0) return;
+  var dy = Math.abs(e.touches[0].clientY - dragStartY);
+  if (dy > 4 && !isDragging) {
+    isDragging = true;
+  }
+  if (isDragging) {
+    var newTop = dragStartTop + (e.touches[0].clientY - dragStartY);
+    newTop = Math.max(40, Math.min(newTop, window.innerHeight - 60));
+    toggleBtn.style.top = newTop + 'px';
+  }
+}, {passive: true});
+
+document.addEventListener('touchend', function(e){
+  if (!isDragging && dragStartY !== 0) {
+    toggleSidebar();
+  }
+  dragStartY = 0;
+  dragStartTop = 0;
+  isDragging = false;
+});
+
+// ==================== EVENT: Unsaved Modal Buttons ====================
+document.getElementById('btn-save-unsaved').addEventListener('click', function(){
+  resolveUnsaved('save');
+});
+
+document.getElementById('btn-discard').addEventListener('click', function(){
+  resolveUnsaved('discard');
+});
+
+document.getElementById('btn-cancel-unsaved').addEventListener('click', function(){
+  resolveUnsaved('cancel');
+});
+
+// Close preview modal
+document.getElementById('btn-close-preview').addEventListener('click', function(){
+  document.getElementById('modal-preview').classList.remove('show');
+});
+
+// ==================== KEYBOARD: Ctrl+S / Cmd+S ====================
+document.addEventListener('keydown', function(e){
+  // Intercept Ctrl+S / Cmd+S in capture phase
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    e.stopPropagation();
+    saveCurrent();
+  }
+}, true); // capture phase — runs before Excalidraw's own handlers
+
+// ==================== BEFOREUNLOAD ====================
+window.addEventListener('beforeunload', function(e){
+  if (isDirty) {
+    e.preventDefault();
+    e.returnValue = '您有未保存的更改，确定要离开吗？';
+    return e.returnValue;
+  }
+});
+
+// ==================== INIT ====================
+function init() {
+  // Render initial Excalidraw canvas
+  renderExcalidraw([], {});
+
+  // Open sidebar
+  toggleSidebar(true);
+
+  // Navigate to default directory
+  navigateTo(DEFAULT_DIR);
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>
