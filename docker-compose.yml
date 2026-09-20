@@ -7,4 +7,4 @@ services:
     ports:
       - "48501:80"
     volumes:
-      - /home/ubuntu/excalidraw-workspace:/data
+      - ./data:/data
